@@ -2,7 +2,7 @@
 // Copyright (C) 2025 flatplum
 
 import { Client, iteratePaginatedAPI } from "@notionhq/client";
-import { PageObjectResponse, DatabaseObjectResponse, DataSourceObjectResponse, BlockObjectResponse } from "@notionhq/client/build/src/api-endpoints";
+import { PageObjectResponse, BlockObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -63,7 +63,9 @@ async function retrieveBlockChildren(id) {
 }
 
 async function retrieveChildDatabase(id) {
-
+  const database = await notion.databases.retrieve({ database_id: id })
+  if (!("title" in database)) { return }
+  return await getAllPages(database.data_sources[0].id)
 }
 
 // const getTextFromBlock = (block)=>{
@@ -153,7 +155,30 @@ async function getAllPages(databaseId: string): Promise<PageObjectResponse[]> {
   }
 }
 
+
+type flatMetadataItem = {
+  _index: number,
+  role?: string
+  people: {
+    name: string
+    img: string
+    title: string
+    order: string
+    // _index: number
+  }[]
+}
+
+type committeeMetadataType = {
+  [key: string]: flatMetadataItem
+}
+
+
 (async () => {
+  const USER_YEAR_QUERY = "2025"
+  let htmlOutput: string = ""
+  let committeeMetadata: committeeMetadataType = {}
+  let committeePage: PageObjectResponse | undefined
+
   if (!NOTION_DATABASE_ID) {
     console.log("No database ID found.")
     return
@@ -173,33 +198,146 @@ async function getAllPages(databaseId: string): Promise<PageObjectResponse[]> {
     .filter((x): x is [string, string] => Array.isArray(x) && x.length === 2)
   )
   
-  // // We're only implementing CommitteeData right now
+  // We're only implementing CommitteeData right now
+  // The Notion API sucks so I'll extensively employ comments
+  //
+  // This retrieves the "Commitees By Year" database
   const blocks = await retrieveBlockChildren(websiteDataSourcePages.CommitteeData);
-  const committee2025Block = blocks.filter(x => x.type == "child_database").find(x => x.child_database.title == "Committees By Year")
-  if (committee2025Block == undefined) {
+  const commByYearBlock = blocks.filter(x => x.type == "child_database").find(x => x.child_database.title == "Committees By Year")
+  if (!commByYearBlock) {
     console.log("Could not find committee block.")
     return
   }
-  const committee2025Database = await notion.databases.retrieve({
-    database_id: committee2025Block.id
-  })
-  if (!("title" in committee2025Database)) { return }
-  const committee2025TeamDatabases = (await retrieveBlockChildren((await getAllPages(committee2025Database.data_sources[0].id))[0].id))
-    .filter(x => x.type == "child_database")
-  console.log(committee2025TeamDatabases)
-  // console.log(committee2025DataSource)
 
-  // console.log(peepee)
-  // const articleID = "292749b9b6198063bbdf000c033c4669";
-  // // console.log(articleID);
-  // const pages = await getAllPages(articleID);
-  // const pagesMetadata = await Promise.all(pages.map(async (p)=>{
-  //   const blocks = await retrieveBlockChildren(p.id);
-  //   // return {
-  //   //   title: p.properties.Name.title[0].plain_text,
-  //   //   html: blocks.map(getTextFromBlock).join("")
-  //   // };
-  //   return blocks.map(getTextFromBlock).join("");
-  // }));
-  // console.log(pagesMetadata)
+  const commByYearPages = await retrieveChildDatabase(commByYearBlock.id)
+  if (!commByYearPages) {
+    console.log("Failed to fetch child database.")
+    return
+  }
+
+  // commByYearDatabase contains the pages (2025, 2026, etc) and we need to search
+  // for the one the user queried.
+  for (let i = 0; i < commByYearPages.length; i++) {
+    const page = (await notion.pages.retrieve({
+      page_id: commByYearPages[i].id
+    }))
+    if (!("properties" in page)) { continue }
+    const name = page.properties.Name
+    if (name.type != "title") { continue }
+    if (name.title[0].plain_text != USER_YEAR_QUERY) { continue }
+    committeePage = commByYearPages[i]
+  }
+
+  if (!committeePage) {
+    console.log("Unable to find year as given.")
+    return
+  }
+
+  // committeeTeamPages will contain the year's team and their roles
+  const committeeTeamDatabases = (await retrieveBlockChildren(committeePage.id))
+    .filter(x => x.type == "child_database")
+  const database_team = committeeTeamDatabases.filter(x => x.child_database.title == "_team")[0]
+  const database_metadata = committeeTeamDatabases.filter(x => x.child_database.title == "_rolemetadata")[0]
+  
+  if (!database_team || !database_metadata)  {
+    console.log("Could not locate at least one of _team or _rolemetadata")
+    return
+  }
+
+  const pages_team = await retrieveChildDatabase(database_team.id)
+  if (!pages_team) {
+    console.log("Failed to fetch committee team pages")
+    return
+  }
+
+  const pages_metadata = await retrieveChildDatabase(database_metadata.id)
+  if (!pages_metadata) {
+    console.log("Failed to fetch committee team metadata")
+    return
+  }
+
+
+  for (let i = 0; i < pages_metadata.length; i++) {
+    const properties = pages_metadata[i].properties
+    const name = properties.Name
+    const index = properties.index
+
+    if (name.type != "title") { continue }
+    if (index.type != "number") { continue }
+    if (!index.number) { continue }
+
+    committeeMetadata[name.title[0].plain_text] = {_index: index.number, people: []}
+  }
+
+   for (let i = 0; i < pages_team.length; i++) {
+    const properties = pages_team[i].properties
+    const title = properties.Name
+    const role = properties.role
+    const order = properties.order
+    const members = properties["Committee Members"]
+
+    if (title.type != "title") { continue }
+    if (role.type != "select") { continue }
+    if (!role.select) { continue }
+    if (order.type != "select") { continue }
+    if (!order.select) { continue }
+    if (members.type != "relation") { continue }
+    if (!members) { continue }
+
+    for (let j = 0; j < members.relation.length; j++) {
+      const profile = await notion.pages.retrieve({ page_id: members.relation[j].id })
+      if (!("properties" in profile)) { continue }
+
+      const name = profile.properties.Name
+      const portrait = profile.properties.Portrait
+      if (portrait.type != "files") { continue }
+      if (!portrait) { continue }
+      const urlObj = portrait.files[0]
+      if (urlObj.type != "external") { continue }
+      if (name.type != "title") { continue }
+
+      committeeMetadata[role.select.name].people.push({
+        name: name.title[0].plain_text,
+        img: urlObj.external.url,
+        title: title.title[0].plain_text,
+        order: order.select.name
+      })
+    }
+  }
+
+  const flatMetadata = Object.entries(committeeMetadata).map(x => {
+    const y = x[1]
+    y["role"] = x[0]
+    return y
+  })
+  flatMetadata.sort((a,b) => a._index - b._index)
+
+  for (let i = 0; i < flatMetadata.length; i++) {
+    const subcommittee = flatMetadata[i]
+    const officers = subcommittee.people.filter(x => x.order == "officer")
+    const directors = subcommittee.people.filter(x => x.order == "director")
+    htmlOutput += `<h1>${subcommittee.role}</h1>`
+    // We assume only two layers for simplicity
+    htmlOutput += `<div class="officers">`
+    for (let j = 0; j < directors.length; j++) {
+      htmlOutput += 
+        `<div class="committee-member">
+          <img src="${directors[j].img}">
+          <h2>${directors[j].title}</h2>
+          <h3>${directors[j].name}</h3>
+        </div>`
+    }
+    htmlOutput += `</div><div class="officers">`
+    for (let j = 0; j < officers.length; j++) {
+      htmlOutput += 
+      `<div class="committee-member">
+          <img src="${officers[j].img}">
+          <h2>${officers[j].title}</h2>
+          <h3>${officers[j].name}</h3>
+        </div>`
+    }
+    htmlOutput += `</div>`
+  }
+
+  console.log(htmlOutput)
 })();
