@@ -174,7 +174,7 @@ type committeeMetadataType = {
 
 
 (async () => {
-  const USER_YEAR_QUERY = "2025"
+  const USER_YEAR_QUERY = "2026 Sem 1"
   let htmlOutput: string = ""
   let committeeMetadata: committeeMetadataType = {}
   let committeePage: PageObjectResponse | undefined
@@ -203,7 +203,7 @@ type committeeMetadataType = {
   //
   // This retrieves the "Commitees By Year" database
   const blocks = await retrieveBlockChildren(websiteDataSourcePages.CommitteeData);
-  const commByYearBlock = blocks.filter(x => x.type == "child_database").find(x => x.child_database.title == "Committees By Year")
+  const commByYearBlock = blocks.filter(x => x.type == "child_database").find(x => x.child_database.title == "Committees By Semester")
   if (!commByYearBlock) {
     console.log("Could not find committee block.")
     return
@@ -272,15 +272,15 @@ type committeeMetadataType = {
    for (let i = 0; i < pages_team.length; i++) {
     const properties = pages_team[i].properties
     const title = properties.Name
+    const team = properties.team
     const role = properties.role
-    const order = properties.order
     const members = properties["Committee Members"]
 
     if (title.type != "title") { continue }
+    if (team.type != "select") { continue }
+    if (!team.select) { continue }
     if (role.type != "select") { continue }
     if (!role.select) { continue }
-    if (order.type != "select") { continue }
-    if (!order.select) { continue }
     if (members.type != "relation") { continue }
     if (!members) { continue }
 
@@ -292,15 +292,15 @@ type committeeMetadataType = {
       const portrait = profile.properties.Portrait
       if (portrait.type != "files") { continue }
       if (!portrait) { continue }
-      const urlObj = portrait.files[0]
+      const urlObj = portrait.files[0] || ""
       if (urlObj.type != "external") { continue }
       if (name.type != "title") { continue }
 
-      committeeMetadata[role.select.name].people.push({
+      committeeMetadata[team.select.name].people.push({
         name: name.title[0].plain_text,
         img: urlObj.external.url,
         title: title.title[0].plain_text,
-        order: order.select.name
+        order: role.select.name
       })
     }
   }
