@@ -4,8 +4,8 @@
 import { Client, iteratePaginatedAPI } from "npm:@notionhq/client";
 import { PageObjectResponse, BlockObjectResponse } from "npm:@notionhq/client/build/src/api-endpoints";
 
-const NOTION_INTEGRATION_KEY = process.env.NOTION_INTEGRATION_KEY
-const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID
+const NOTION_INTEGRATION_KEY = Deno.env.get("NOTION_INTEGRATION_KEY")
+const NOTION_DATABASE_ID = Deno.env.get("NOTION_DATABASE_ID")
 
 // Initializing a client
 // If we don't find a key, exit
@@ -364,4 +364,4 @@ Deno.serve(async (req)=>{
       'Connection': 'keep-alive'
     }
   });
-})();
+});
