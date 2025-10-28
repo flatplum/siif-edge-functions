@@ -1,11 +1,8 @@
 // The main entrypoint for the notion-integration edge function
 // Copyright (C) 2025 flatplum
 
-import { Client, iteratePaginatedAPI } from "@notionhq/client";
-import { PageObjectResponse, BlockObjectResponse } from "@notionhq/client/build/src/api-endpoints";
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { Client, iteratePaginatedAPI } from "npm:@notionhq/client";
+import { PageObjectResponse, BlockObjectResponse } from "npm:@notionhq/client/build/src/api-endpoints";
 
 const NOTION_INTEGRATION_KEY = process.env.NOTION_INTEGRATION_KEY
 const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID
@@ -173,7 +170,7 @@ type committeeMetadataType = {
 }
 
 
-(async () => {
+Deno.serve(async (req)=>{
   const USER_YEAR_QUERY = "2026 Sem 1"
   let htmlOutput: string = ""
   let committeeMetadata: committeeMetadataType = {}
@@ -361,5 +358,10 @@ type committeeMetadataType = {
     htmlOutput += `</div>`
   }
 
-  console.log(htmlOutput)
+  return new Response(htmlOutput, {
+    headers: {
+      'Content-Type': 'text/plain',
+      'Connection': 'keep-alive'
+    }
+  });
 })();
