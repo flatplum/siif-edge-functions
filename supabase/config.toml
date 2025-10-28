@@ -1,0 +1,2 @@
+[functions.notion-integration]
+verify_jwt = false
