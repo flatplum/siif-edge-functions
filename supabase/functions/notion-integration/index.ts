@@ -339,7 +339,8 @@ Deno.serve(async (req)=>{
   return new Response(htmlOutput, {
     headers: {
       'Content-Type': 'text/plain',
-      'Connection': 'keep-alive'
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
     }
   });
 });
