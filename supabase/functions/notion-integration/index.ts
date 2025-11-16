@@ -327,7 +327,7 @@ Deno.serve(async (req)=>{
           const new_digest = md5(fileBytes)
 
           // I really hope you have nicknames in brackets Alex!
-          const supabaseFileName = plainName.split(" ").filter(x => x[0] != "(")
+          const supabaseFileName = plainName.split(" ").filter(x => x[0] != "(").join("")
 
           // Notion seems to serve their images as a jpeg
           // And wow do these variables have terrible names
