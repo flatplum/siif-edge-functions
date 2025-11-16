@@ -3,9 +3,11 @@
 
 import { Client, iteratePaginatedAPI } from "npm:@notionhq/client";
 import { PageObjectResponse, BlockObjectResponse } from "npm:@notionhq/client/build/src/api-endpoints";
+import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const NOTION_INTEGRATION_KEY = Deno.env.get("NOTION_INTEGRATION_KEY")
 const NOTION_DATABASE_ID = Deno.env.get("NOTION_DATABASE_ID")
+const STORAGE_URL = Deno.env.get("FUNCTION_STORAGE_URL")
 
 // Initializing a client
 // If we don't find a key, exit
@@ -171,176 +173,205 @@ type committeeMetadataType = {
 
 
 Deno.serve(async (req)=>{
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
   const USER_YEAR_QUERY = "2026 Sem 1"
   let htmlOutput: string = ""
   let committeeMetadata: committeeMetadataType = {}
   let committeePage: PageObjectResponse | undefined
 
-  if (!NOTION_DATABASE_ID) {
-    console.log("No database ID found.")
-    return
-  }
+  try {
+    const storageResponse = await fetch(`${STORAGE_URL}/committee.httml`)
 
-  const websiteDataSourceData = (await notion.databases.retrieve({
-    database_id: NOTION_DATABASE_ID
-  }))
-  if (!("data_sources" in websiteDataSourceData)) { return }
-  const websiteDataSourceId = websiteDataSourceData.data_sources[0].id
-  const websiteDataSourcePages = Object.fromEntries((await getAllPages(websiteDataSourceId))
-    .map(x => {
-      const name = x.properties.Name
-      if (name.type != "title") { return }
-      return [name.title[0].plain_text, x.id]
-    })
-    .filter((x): x is [string, string] => Array.isArray(x) && x.length === 2)
-  )
+    if (storageResponse.ok) { 
+      // File exists in storage, return it directly      
+      return storageResponse    
+    }
+
+    // Now we execute rest of code
+    if (!NOTION_DATABASE_ID) {
+      console.log("No database ID found.")
+      return
+    }
   
-  // We're only implementing CommitteeData right now
-  // The Notion API sucks so I'll extensively employ comments
-  //
-  // This retrieves the "Commitees By Year" database
-  const blocks = await retrieveBlockChildren(websiteDataSourcePages.CommitteeData);
-  const commByYearBlock = blocks.filter(x => x.type == "child_database").find(x => x.child_database.title == "Committees By Semester")
-  if (!commByYearBlock) {
-    console.log("Could not find committee block.")
-    return
-  }
-
-  const commByYearPages = await retrieveChildDatabase(commByYearBlock.id)
-  if (!commByYearPages) {
-    console.log("Failed to fetch child database.")
-    return
-  }
-
-  // commByYearDatabase contains the pages (2025, 2026, etc) and we need to search
-  // for the one the user queried.
-  for (let i = 0; i < commByYearPages.length; i++) {
-    const page = (await notion.pages.retrieve({
-      page_id: commByYearPages[i].id
+    const websiteDataSourceData = (await notion.databases.retrieve({
+      database_id: NOTION_DATABASE_ID
     }))
-    if (!("properties" in page)) { continue }
-    const name = page.properties.Name
-    if (name.type != "title") { continue }
-    if (name.title[0].plain_text != USER_YEAR_QUERY) { continue }
-    committeePage = commByYearPages[i]
-  }
-
-  if (!committeePage) {
-    console.log("Unable to find year as given.")
-    return
-  }
-
-  // committeeTeamPages will contain the year's team and their roles
-  const committeeTeamDatabases = (await retrieveBlockChildren(committeePage.id))
-    .filter(x => x.type == "child_database")
-  const database_team = committeeTeamDatabases.filter(x => x.child_database.title == "_team")[0]
-  const database_metadata = committeeTeamDatabases.filter(x => x.child_database.title == "_rolemetadata")[0]
-  
-  if (!database_team || !database_metadata)  {
-    console.log("Could not locate at least one of _team or _rolemetadata")
-    return
-  }
-
-  const pages_team = await retrieveChildDatabase(database_team.id)
-  if (!pages_team) {
-    console.log("Failed to fetch committee team pages")
-    return
-  }
-
-  const pages_metadata = await retrieveChildDatabase(database_metadata.id)
-  if (!pages_metadata) {
-    console.log("Failed to fetch committee team metadata")
-    return
-  }
-
-
-  for (let i = 0; i < pages_metadata.length; i++) {
-    const properties = pages_metadata[i].properties
-    const name = properties.Name
-    const index = properties.index
-
-    if (name.type != "title") { continue }
-    if (index.type != "number") { continue }
-    if (!index.number) { continue }
-
-    committeeMetadata[name.title[0].plain_text] = {_index: index.number, people: []}
-  }
-
-   for (let i = 0; i < pages_team.length; i++) {
-    const properties = pages_team[i].properties
-    const title = properties.Name
-    const team = properties.team
-    const role = properties.role
-    const members = properties["Committee Members"]
-
-    if (title.type != "title") { continue }
-    if (team.type != "select") { continue }
-    if (!team.select) { continue }
-    if (role.type != "select") { continue }
-    if (!role.select) { continue }
-    if (members.type != "relation") { continue }
-    if (!members) { continue }
-
-    for (let j = 0; j < members.relation.length; j++) {
-      const profile = await notion.pages.retrieve({ page_id: members.relation[j].id })
-      if (!("properties" in profile)) { continue }
-
-      const name = profile.properties.Name
-      const portrait = profile.properties.Portrait
-      if (portrait.type != "files") { continue }
-      if (!portrait) { continue }
-      const urlObj = portrait.files[0] || ""
-      if (urlObj.type != "external") { continue }
-      if (name.type != "title") { continue }
-
-      committeeMetadata[team.select.name].people.push({
-        name: name.title[0].plain_text,
-        img: urlObj.external.url,
-        title: title.title[0].plain_text,
-        order: role.select.name
+    if (!("data_sources" in websiteDataSourceData)) { return }
+    const websiteDataSourceId = websiteDataSourceData.data_sources[0].id
+    const websiteDataSourcePages = Object.fromEntries((await getAllPages(websiteDataSourceId))
+      .map(x => {
+        const name = x.properties.Name
+        if (name.type != "title") { return }
+        return [name.title[0].plain_text, x.id]
       })
+      .filter((x): x is [string, string] => Array.isArray(x) && x.length === 2)
+    )
+    
+    // We're only implementing CommitteeData right now
+    // The Notion API sucks so I'll extensively employ comments
+    //
+    // This retrieves the "Commitees By Year" database
+    const blocks = await retrieveBlockChildren(websiteDataSourcePages.CommitteeData);
+    const commByYearBlock = blocks.filter(x => x.type == "child_database").find(x => x.child_database.title == "Committees By Semester")
+    if (!commByYearBlock) {
+      console.log("Could not find committee block.")
+      return
     }
-  }
-
-  const flatMetadata = Object.entries(committeeMetadata).map(x => {
-    const y = x[1]
-    y["role"] = x[0]
-    return y
-  })
-  flatMetadata.sort((a,b) => a._index - b._index)
-
-  for (let i = 0; i < flatMetadata.length; i++) {
-    const subcommittee = flatMetadata[i]
-    const officers = subcommittee.people.filter(x => x.order == "officer")
-    const directors = subcommittee.people.filter(x => x.order == "director")
-    htmlOutput += `<h1>${subcommittee.role}</h1>`
-    // We assume only two layers for simplicity
-    htmlOutput += `<div class="officers">`
-    for (let j = 0; j < directors.length; j++) {
-      htmlOutput += 
+  
+    const commByYearPages = await retrieveChildDatabase(commByYearBlock.id)
+    if (!commByYearPages) {
+      console.log("Failed to fetch child database.")
+      return
+    }
+  
+    // commByYearDatabase contains the pages (2025, 2026, etc) and we need to search
+    // for the one the user queried.
+    for (let i = 0; i < commByYearPages.length; i++) {
+      const page = (await notion.pages.retrieve({
+        page_id: commByYearPages[i].id
+      }))
+      if (!("properties" in page)) { continue }
+      const name = page.properties.Name
+      if (name.type != "title") { continue }
+      if (name.title[0].plain_text != USER_YEAR_QUERY) { continue }
+      committeePage = commByYearPages[i]
+    }
+  
+    if (!committeePage) {
+      console.log("Unable to find year as given.")
+      return
+    }
+  
+    // committeeTeamPages will contain the year's team and their roles
+    const committeeTeamDatabases = (await retrieveBlockChildren(committeePage.id))
+      .filter(x => x.type == "child_database")
+    const database_team = committeeTeamDatabases.filter(x => x.child_database.title == "_team")[0]
+    const database_metadata = committeeTeamDatabases.filter(x => x.child_database.title == "_rolemetadata")[0]
+    
+    if (!database_team || !database_metadata)  {
+      console.log("Could not locate at least one of _team or _rolemetadata")
+      return
+    }
+  
+    const pages_team = await retrieveChildDatabase(database_team.id)
+    if (!pages_team) {
+      console.log("Failed to fetch committee team pages")
+      return
+    }
+  
+    const pages_metadata = await retrieveChildDatabase(database_metadata.id)
+    if (!pages_metadata) {
+      console.log("Failed to fetch committee team metadata")
+      return
+    }
+  
+  
+    for (let i = 0; i < pages_metadata.length; i++) {
+      const properties = pages_metadata[i].properties
+      const name = properties.Name
+      const index = properties.index
+  
+      if (name.type != "title") { continue }
+      if (index.type != "number") { continue }
+      if (!index.number) { continue }
+  
+      committeeMetadata[name.title[0].plain_text] = {_index: index.number, people: []}
+    }
+  
+     for (let i = 0; i < pages_team.length; i++) {
+      const properties = pages_team[i].properties
+      const title = properties.Name
+      const team = properties.team
+      const role = properties.role
+      const members = properties["Committee Members"]
+  
+      if (title.type != "title") { continue }
+      if (team.type != "select") { continue }
+      if (!team.select) { continue }
+      if (role.type != "select") { continue }
+      if (!role.select) { continue }
+      if (members.type != "relation") { continue }
+      if (!members) { continue }
+  
+      for (let j = 0; j < members.relation.length; j++) {
+        const profile = await notion.pages.retrieve({ page_id: members.relation[j].id })
+        if (!("properties" in profile)) { continue }
+  
+        const name = profile.properties.Name
+        const portrait = profile.properties.Portrait
+        if (portrait.type != "files") { continue }
+        if (!portrait) { continue }
+        const urlObj = portrait.files[0] || ""
+        if (urlObj.type != "external") { continue }
+        if (name.type != "title") { continue }
+  
+        committeeMetadata[team.select.name].people.push({
+          name: name.title[0].plain_text,
+          img: urlObj.external.url,
+          title: title.title[0].plain_text,
+          order: role.select.name
+        })
+      }
+    }
+  
+    const flatMetadata = Object.entries(committeeMetadata).map(x => {
+      const y = x[1]
+      y["role"] = x[0]
+      return y
+    })
+    flatMetadata.sort((a,b) => a._index - b._index)
+  
+    for (let i = 0; i < flatMetadata.length; i++) {
+      const subcommittee = flatMetadata[i]
+      const officers = subcommittee.people.filter(x => x.order == "officer")
+      const directors = subcommittee.people.filter(x => x.order == "director")
+      htmlOutput += `<h1>${subcommittee.role}</h1>`
+      // We assume only two layers for simplicity
+      htmlOutput += `<div class="officers">`
+      for (let j = 0; j < directors.length; j++) {
+        htmlOutput += 
+          `<div class="committee-member">
+            <img src="${directors[j].img}">
+            <h2>${directors[j].title}</h2>
+            <h3>${directors[j].name}</h3>
+          </div>`
+      }
+      htmlOutput += `</div><div class="officers">`
+      for (let j = 0; j < officers.length; j++) {
+        htmlOutput += 
         `<div class="committee-member">
-          <img src="${directors[j].img}">
-          <h2>${directors[j].title}</h2>
-          <h3>${directors[j].name}</h3>
-        </div>`
+            <img src="${officers[j].img}">
+            <h2>${officers[j].title}</h2>
+            <h3>${officers[j].name}</h3>
+          </div>`
+      }
+      htmlOutput += `</div>`
     }
-    htmlOutput += `</div><div class="officers">`
-    for (let j = 0; j < officers.length; j++) {
-      htmlOutput += 
-      `<div class="committee-member">
-          <img src="${officers[j].img}">
-          <h2>${officers[j].title}</h2>
-          <h3>${officers[j].name}</h3>
-        </div>`
-    }
-    htmlOutput += `</div>`
-  }
+  
+    // Upload to storage for future requests
+    const { error } = await supabaseAdmin.storage
+      .from('functions')
+      .upload(`committee.html`, htmlOutput, {
+        contentType: 'text/html',
+        cacheControl: '86400', // Cache for 24 hours
+      })
 
-  return new Response(htmlOutput, {
-    headers: {
-      'Content-Type': 'text/plain',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+    if (error) {
+      console.error('Upload failed:', error)
     }
-  });
+
+    return new Response(htmlOutput, {
+      headers: {
+        'Content-Type': 'text/plain',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  } catch (error) {
+    return new Response('Error processing request', { status: 500 })
+  }
 });
