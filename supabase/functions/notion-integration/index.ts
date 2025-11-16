@@ -21,34 +21,6 @@ const notion = new Client({
   auth: NOTION_INTEGRATION_KEY
 });
 
-// const annotationToTag = {
-//   bold: "b",
-//   italic: "i",
-//   strikethrough: "s",
-//   underline: "u",
-//   code: "code"
-// };
-// const typeToTag = {
-//   heading_1: "h1",
-//   heading_2: "h2",
-//   paragraph: "p"
-// };
-
-// const getPlainTextFromRichText = (richText)=>{
-//   return richText.map((t)=>{
-//     let htmlText = t.plain_text;
-//     Object.entries(t.annotations).forEach(([k, v])=>{
-//       if (!v) { return }
-//       if (k == "color") { return }
-
-//       const tag = annotationToTag[k];
-//       htmlText = `<${tag}>${htmlText}</${tag}>`;
-//     });
-//     return htmlText;
-//   }).join("");
-//   // Note: A page mention will return "Undefined" as the page name if the page has not been shared with the integration. See: https://developers.notion.com/reference/block#mention
-// };
-
 async function retrieveBlockChildren(id) {
   // console.log("Retrieving blocks (async)...");
   const blocks: BlockObjectResponse[] = [];
@@ -67,74 +39,6 @@ async function retrieveChildDatabase(id) {
   if (!("title" in database)) { return }
   return await getAllPages(database.data_sources[0].id)
 }
-
-// const getTextFromBlock = (block)=>{
-//   const tag = typeToTag[block.type];
-//   let text;
-//   // Get rich text from blocks that support it
-//   if (block[block.type].rich_text) {
-//     // This will be an empty string if it's an empty line.
-//     text = getPlainTextFromRichText(block[block.type].rich_text);
-//   } else {
-//     switch(block.type){
-//       case "unsupported":
-//         // The public API does not support all block types yet
-//         text = "[Unsupported block type]";
-//         break;
-//       case "bookmark":
-//         text = block.bookmark.url;
-//         break;
-//       case "child_database":
-//         text = block.child_database.title;
-//         break;
-//       case "child_page":
-//         text = block.child_page.title;
-//         break;
-//       case "embed":
-//       case "video":
-//       case "file":
-//       case "image":
-//       // case "pdf":
-//       //   text = getMediaSourceText(block)
-//       //   break
-//       case "equation":
-//         text = block.equation.expression;
-//         break;
-//       case "link_preview":
-//         text = block.link_preview.url;
-//         break;
-//       case "synced_block":
-//         // Provides ID for block it's synced with.
-//         text = block.synced_block.synced_from ? "This block is synced with a block with the following ID: " + block.synced_block.synced_from[block.synced_block.synced_from.type] : "Source sync block that another blocked is synced with.";
-//         break;
-//       case "table":
-//         // Only contains table properties.
-//         // Fetch children blocks for more details.
-//         text = "Table width: " + block.table.table_width;
-//         break;
-//       case "table_of_contents":
-//         // Does not include text from ToC; just the color
-//         text = "ToC color: " + block.table_of_contents.color;
-//         break;
-//       case "breadcrumb":
-//       case "column_list":
-//       case "divider":
-//         text = "No text available";
-//         break;
-//       default:
-//         text = "[Needs case added]";
-//         break;
-//     }
-//   }
-//   // Blocks with the has_children property will require fetching the child blocks. (Not included in this example.)
-//   // e.g. nested bulleted lists
-//   if (block.has_children) {
-//     // For now, we'll just flag there are children blocks.
-//     text = text + " (Has children)";
-//   }
-//   // Includes block type for readability. Update formatting as needed.
-//   return `<${tag}>${text}</${tag}>`;
-// };
 
 async function getAllPages(databaseId: string): Promise<PageObjectResponse[]> {
   const pages: PageObjectResponse[] = [];
