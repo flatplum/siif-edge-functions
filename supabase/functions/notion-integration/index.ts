@@ -293,7 +293,29 @@ type committeeMetadataType = {
       if (portrait.type != "files") { continue }
       if (!portrait) { continue }
       const urlObj = portrait.files[0] || ""
-      if (urlObj.type != "external") { continue }
+      // The check below can fail occasionally, if somebody (looking at you Alex)
+      // uploaded a file instead of a url to the page.
+      // To fix this we upload the file to supabase then replace the file
+      // with the supabase link
+      if (urlObj.type != "external") { 
+        // We can't deal with any other type yet, if there are any
+        // Maybe replace with placeholder?
+        if (urlObj.type != "file") {
+          console.log("Unable to parse profile picture.")
+          continue
+        }
+
+        const res = await fetch(urlObj.file.url)
+        if (!res.ok) { console.log("Could not parse committee profile from Notion.") } 
+
+        const arrayBuffer = await res.arrayBuffer()
+        const fileBytes = new Uint8Array(arrayBuffer)
+
+        // UPLOAD TO SUPABASE STORAGE HERE
+
+        continue
+      }
+      
       if (name.type != "title") { continue }
 
       committeeMetadata[team.select.name].people.push({
