@@ -344,8 +344,10 @@ Deno.serve(async (req)=>{
           }
 
           if (new_digest == old_digest) {
-            console.log("Identical file found, upload unnecessary.")
+            console.log(`Identical file found for ${supabaseFileName}, upload unnecessary.`)
             return imageUrl
+          } else {
+            console.log(`Uploading for ${supabaseFileName}.`)
           }
 
           const { error } = await supabaseAdmin.storage
