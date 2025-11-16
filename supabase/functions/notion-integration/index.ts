@@ -184,7 +184,7 @@ Deno.serve(async (req)=>{
   let committeePage: PageObjectResponse | undefined
 
   try {
-    const storageResponse = await fetch(`${STORAGE_URL}/committee.httml`)
+    const storageResponse = await fetch(`${STORAGE_URL}/committee.html`)
 
     if (storageResponse.ok) { 
       // File exists in storage, return it directly      
