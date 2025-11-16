@@ -425,7 +425,16 @@ Deno.serve(async (req)=>{
       .from('functions')
       .upload(`committee.html`, htmlOutput, {
         contentType: 'text/html',
-        cacheControl: '86400', // Cache for 24 hours
+        // I've chosen not to cache this for a few reasons:
+        //   1. Supabase functions only trigger when someoneone visits the website
+        //      and this would require a lengthy wait while everything loads
+        //   2. That would also cause excess stress on Notion that I want to avoid
+        //      if caches only last 24 hours
+        //   3. It's much easier to trigger a refresh when we want, and we shouldn't be
+        //      updating committees that often
+        //   4. I wrote this at 4am for some of the messiest and worst annotated code ever,
+        //      sue me
+        // cacheControl: '86400',
       })
 
     if (error) {
