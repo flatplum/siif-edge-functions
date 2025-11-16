@@ -4,10 +4,11 @@
 import { Client, iteratePaginatedAPI } from "npm:@notionhq/client";
 import { PageObjectResponse, BlockObjectResponse } from "npm:@notionhq/client/build/src/api-endpoints";
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { hash } from 'npm:blake3'
 
 const NOTION_INTEGRATION_KEY = Deno.env.get("NOTION_INTEGRATION_KEY")
 const NOTION_DATABASE_ID = Deno.env.get("NOTION_DATABASE_ID")
-const STORAGE_URL = Deno.env.get("FUNCTION_STORAGE_URL")
+const STORAGE_URL = Deno.env.get("STORAGE_URL")
 
 // Initializing a client
 // If we don't find a key, exit
@@ -184,7 +185,7 @@ Deno.serve(async (req)=>{
   let committeePage: PageObjectResponse | undefined
 
   try {
-    const storageResponse = await fetch(`${STORAGE_URL}/committee.html`)
+    const storageResponse = await fetch(`${STORAGE_URL}/functions/committee.html`)
 
     if (storageResponse.ok) { 
       // File exists in storage, return it directly      
@@ -298,19 +299,68 @@ Deno.serve(async (req)=>{
       if (!members) { continue }
   
       for (let j = 0; j < members.relation.length; j++) {
+        let imgUrl = ""
         const profile = await notion.pages.retrieve({ page_id: members.relation[j].id })
         if (!("properties" in profile)) { continue }
   
         const name = profile.properties.Name
+        if (name.type != "title") { continue }
+        const plainName = name.title[0].plain_text
+
         const portrait = profile.properties.Portrait
         if (portrait.type != "files") { continue }
         if (!portrait) { continue }
+
         const urlObj = portrait.files[0] || ""
-        if (urlObj.type != "external") { continue }
         // The check below can fail occasionally, if somebody (looking at you Alex)
         // uploaded a file instead of a url to the page.
         // To fix this we upload the file to supabase then replace the file
         // with the supabase link
+        const getUrlObject = async (): Promise<string> => {
+          let newFile = false
+          let old_digest = ""
+          const res = await fetch(urlObj.file.url)
+          if (!res.ok) { console.log("Could not parse committee profile from Notion.") } 
+
+          const arrayBuffer = await res.arrayBuffer()
+          const fileBytes = new Uint8Array(arrayBuffer)
+          const new_digest = hash(fileBytes)
+
+          // I really hope you have nicknames in brackets Alex!
+          const supabaseFileName = plainName.split(" ").filter(x => x[0] != "(")
+
+          // Notion seems to serve their images as a jpeg
+          // And wow do these variables have terrible names
+          const contentType = res.headers.get('content-type') ?? "image/jpeg"
+          const fileExt = contentType.split("/")[1]
+
+          // Read existing file from storage at expected location, and then return hash
+          const imageUrl = `${STORAGE_URL}/photos/committee/${supabaseFileName}.${fileExt}`
+          const storageResponse = await fetch(imageUrl)
+          if (!storageResponse.ok) { 
+            newFile = true 
+          } else {
+            old_digest = hash(new Uint8Array(await storageResponse.arrayBuffer()))
+          }
+
+          if (new_digest == old_digest) {
+            console.log("Identical file found, upload unnecessary.")
+            return imageUrl
+          }
+
+          const { error } = await supabaseAdmin.storage
+            .from('photos')
+            [newFile ? "upload" : "update"](`committee/${supabaseFileName}.${fileExt}`, fileBytes, {
+              contentType: contentType
+            })
+
+          if (error) {
+            console.error('Upload failed:', error)
+          }
+
+          return imageUrl
+        }
+
         if (urlObj.type != "external") { 
           // We can't deal with any other type yet, if there are any
           // Maybe replace with placeholder?
@@ -319,21 +369,15 @@ Deno.serve(async (req)=>{
             continue
           }
 
-          const res = await fetch(urlObj.file.url)
-          if (!res.ok) { console.log("Could not parse committee profile from Notion.") } 
-
-          const arrayBuffer = await res.arrayBuffer()
-          const fileBytes = new Uint8Array(arrayBuffer)
-
-          // UPLOAD TO SUPABASE STORAGE HERE
-
-          continue
+          imgUrl = await getUrlObject()
+        } else {
+          imgUrl = urlObj.external.url
         }
-        if (name.type != "title") { continue }
+        
   
         committeeMetadata[team.select.name].people.push({
-          name: name.title[0].plain_text,
-          img: urlObj.external.url,
+          name: plainName,
+          img: imgUrl,
           title: title.title[0].plain_text,
           order: role.select.name
         })
