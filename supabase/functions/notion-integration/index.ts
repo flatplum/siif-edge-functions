@@ -4,7 +4,7 @@
 import { Client, iteratePaginatedAPI } from "npm:@notionhq/client";
 import { PageObjectResponse, BlockObjectResponse } from "npm:@notionhq/client/build/src/api-endpoints";
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { hash } from 'npm:blake3'
+import { md5 } from 'npm:hash-wasm'
 
 const NOTION_INTEGRATION_KEY = Deno.env.get("NOTION_INTEGRATION_KEY")
 const NOTION_DATABASE_ID = Deno.env.get("NOTION_DATABASE_ID")
@@ -324,7 +324,7 @@ Deno.serve(async (req)=>{
 
           const arrayBuffer = await res.arrayBuffer()
           const fileBytes = new Uint8Array(arrayBuffer)
-          const new_digest = hash(fileBytes)
+          const new_digest = md5(fileBytes)
 
           // I really hope you have nicknames in brackets Alex!
           const supabaseFileName = plainName.split(" ").filter(x => x[0] != "(")
@@ -340,7 +340,7 @@ Deno.serve(async (req)=>{
           if (!storageResponse.ok) { 
             newFile = true 
           } else {
-            old_digest = hash(new Uint8Array(await storageResponse.arrayBuffer()))
+            old_digest = md5(new Uint8Array(await storageResponse.arrayBuffer()))
           }
 
           if (new_digest == old_digest) {
