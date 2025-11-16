@@ -324,7 +324,7 @@ Deno.serve(async (req)=>{
 
           const arrayBuffer = await res.arrayBuffer()
           const fileBytes = new Uint8Array(arrayBuffer)
-          const new_digest = md5(fileBytes)
+          const new_digest = await md5(fileBytes)
 
           // I really hope you have nicknames in brackets Alex!
           const supabaseFileName = plainName.split(" ").filter(x => x[0] != "(").join("")
@@ -340,7 +340,7 @@ Deno.serve(async (req)=>{
           if (!storageResponse.ok) { 
             newFile = true 
           } else {
-            old_digest = md5(new Uint8Array(await storageResponse.arrayBuffer()))
+            old_digest = await md5(new Uint8Array(await storageResponse.arrayBuffer()))
           }
 
           if (new_digest == old_digest) {
