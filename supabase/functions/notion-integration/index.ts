@@ -83,7 +83,7 @@ Deno.serve(async (req)=>{
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   )
 
-  const USER_YEAR_QUERY = "2026 Sem 1"
+  const USER_YEAR_QUERY = "2026 Summer"
   let htmlOutput: string = ""
   let committeeMetadata: committeeMetadataType = {}
   let committeePage: PageObjectResponse | undefined
