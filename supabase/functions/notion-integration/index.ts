@@ -174,7 +174,7 @@ type committeeMetadataType = {
 
 
 (async () => {
-  const USER_YEAR_QUERY = "2026 Sem 1"
+  const USER_YEAR_QUERY = "2026 Summer"
   let htmlOutput: string = ""
   let committeeMetadata: committeeMetadataType = {}
   let committeePage: PageObjectResponse | undefined
